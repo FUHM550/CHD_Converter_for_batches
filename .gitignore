@@ -1,0 +1,11 @@
+*.iso
+*.chd
+*.mpeg
+*.7zip
+*.7z
+
+.build_venv
+.build
+.AppDir
+.dist
+.venv
