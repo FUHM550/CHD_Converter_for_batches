@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import threading
 import queue
-import tempfile
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -154,10 +153,36 @@ class CHDConverterApp:
         self.txt_log['yscrollcommand'] = scrollbar.set
 
     def _select_files(self):
-        files = filedialog.askopenfilenames(
-            title="Select Disc Images",
-            filetypes=[("Disc Images", "*.cue *.iso *.gdi"), ("All Files", "*.*")]
-        )
+        files = []
+        # Attempt system file dialogs (KDE kdialog or GNOME zenity)
+        if shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getopenfilename", "--multiple", ".", "Disc Images (*.cue *.iso *.gdi *.ccd)"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    files = [f.strip() for f in res.stdout.split("\n") if f.strip()]
+            except Exception:
+                pass
+
+        if not files and shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    ["zenity", "--file-selection", "--multiple", "--file-filter=Disc Images | *.cue *.iso *.gdi *.ccd"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    files = [f.strip() for f in res.stdout.split("|") if f.strip()]
+            except Exception:
+                pass
+
+        if not files:
+            files = filedialog.askopenfilenames(
+                title="Select Disc Images",
+                filetypes=[("Disc Images", "*.cue *.iso *.gdi *.ccd"), ("All Files", "*.*")]
+            )
+
         if files:
             valid = [f for f in files if "(Track " not in f]
             self.files_to_process = valid
@@ -165,20 +190,70 @@ class CHDConverterApp:
             self._log(f"Selected {len(valid)} file(s).")
 
     def _select_folder(self):
-        folder = filedialog.askdirectory(title="Select Input Folder")
+        folder = ""
+        if shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getexistingdirectory", "."],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        if not folder and shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    ["zenity", "--file-selection", "--directory"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        if not folder:
+            folder = filedialog.askdirectory(title="Select Input Folder")
+
         if folder:
             valid = []
             for root_dir, _, files in os.walk(folder):
                 for f in files:
                     ext = os.path.splitext(f)[1].lower()
-                    if ext in {".cue", ".iso", ".gdi"} and "(Track " not in f:
+                    if ext in {".cue", ".iso", ".gdi", ".ccd"} and "(Track " not in f:
                         valid.append(os.path.join(root_dir, f))
             self.files_to_process = valid
             self.lbl_selected_count.config(text=f"{len(valid)} file(s) found.")
             self._log(f"Found {len(valid)} file(s) in: {folder}")
 
     def _select_out_dir(self):
-        folder = filedialog.askdirectory(title="Select Output Directory")
+        folder = ""
+        if shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getexistingdirectory", "."],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        if not folder and shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    ["zenity", "--file-selection", "--directory"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        if not folder:
+            folder = filedialog.askdirectory(title="Select Output Directory")
+
         if folder:
             self.entry_out_dir.delete(0, tk.END)
             self.entry_out_dir.insert(0, folder)
@@ -196,14 +271,12 @@ class CHDConverterApp:
         self.queue.put(("LOG", text))
 
     def _update_system_stats(self):
-        # Update Timer
         if self.is_running and self.start_time > 0:
             elapsed = int(time.time() - self.start_time)
             hrs, rem = divmod(elapsed, 3600)
             mins, secs = divmod(rem, 60)
             self.lbl_timer.config(text=f"Elapsed: {hrs:02d}:{mins:02d}:{secs:02d}")
 
-        # Update CPU Usage via /proc/stat
         tot, idle = get_cpu_usage_proc()
         if self.prev_cpu_total > 0:
             diff_tot = tot - self.prev_cpu_total
@@ -220,9 +293,11 @@ class CHDConverterApp:
         if self.sound_alarm_path and os.path.exists(self.sound_alarm_path):
             for player in ["paplay", "aplay", "canberra-gtk-play", "ffplay"]:
                 if shutil.which(player):
-                    subprocess.Popen([player, self.sound_alarm_path], stderr=subprocess.DEVNULL)
-                    return
-        # Fallback system bell
+                    try:
+                        subprocess.Popen([player, self.sound_alarm_path], stderr=subprocess.DEVNULL)
+                        return
+                    except Exception:
+                        pass
         self.root.bell()
 
     def _start_conversion(self):
@@ -282,6 +357,10 @@ class CHDConverterApp:
         total_files = len(files)
         count_lock = threading.Lock()
 
+        successful_conversions = []
+        successful_lock = threading.Lock()
+
+        # PHASE 1: Parallel Conversions ONLY
         def worker(job_id, file_path):
             nonlocal completed_count
             filename = os.path.basename(file_path)
@@ -294,50 +373,43 @@ class CHDConverterApp:
 
             if os.path.exists(chd_path):
                 self._log(f"[SKIP] CHD already exists: {base_name}.chd")
+                with successful_lock:
+                    successful_conversions.append((file_path, chd_path, base_name))
             else:
                 self._log(f"[START] Converting: {filename}")
                 cmd_type = "createdvd" if ext.lower() == ".iso" else "createcd"
-                cmd = ["chdman", cmd_type, "-i", file_path, "-o", chd_path, "--force"]
 
-                # Run chdman and capture progress
+                # Cap chdman's internal thread footprint (-numprocessors 2) to control RAM usage
+                cmd = ["chdman", cmd_type, "-i", file_path, "-o", chd_path, "--force", "-numprocessors", "2"]
+
                 process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
                 )
 
+                error_lines = []
                 for line in iter(process.stdout.readline, ''):
-                    # Extract percentage from chdman output lines like "Compressing, 45.2% complete..."
                     match = re.search(r'(\d+\.\d+)%', line)
                     if match:
                         pct = float(match.group(1))
                         self.queue.put(("ROW_PROGRESS", (job_id, filename, pct)))
+                    elif "error" in line.lower() or "fatal" in line.lower() or "failed" in line.lower():
+                        error_lines.append(line.strip())
 
                 process.wait()
 
                 if process.returncode == 0:
-                    # 1. Calculate compression ratio & saved size
-                    orig_bytes = self._get_input_total_size(file_path)
-                    chd_bytes = os.path.getsize(chd_path) if os.path.exists(chd_path) else 0
-
-                    if orig_bytes > 0 and chd_bytes > 0:
-                        ratio = (chd_bytes / orig_bytes) * 100
-                        saved = orig_bytes - chd_bytes
-                        self._log(
-                            f"[SUCCESS] {base_name}.chd\n"
-                            f"  └─ Compression ratio {ratio:.1f}% | Saved {format_size(saved)}"
-                        )
-                    else:
-                        self._log(f"[SUCCESS] Converted: {base_name}.chd")
-
-                    # 2. Verify Output File Integrity
-                    self._log(f"  └─ Verifying integrity of {base_name}.chd...")
-                    v_cmd = ["chdman", "verify", "-i", chd_path]
-                    v_res = subprocess.run(v_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    if v_res.returncode == 0 and "raw sha1" in v_res.stdout.lower():
-                        self._log(f"  └─ Integrity Check: PASSED ✓")
-                    else:
-                        self._log(f"  └─ Integrity Check: FAILED ✗")
+                    self._log(f"[CONVERTED] Finished: {base_name}.chd")
+                    with successful_lock:
+                        successful_conversions.append((file_path, chd_path, base_name))
                 else:
                     self._log(f"[ERROR] Conversion failed for: {filename}")
+                    if error_lines:
+                        self._log(f"  └─ Cause: {' | '.join(error_lines[:2])}")
+                    if os.path.exists(chd_path):
+                        try:
+                            os.remove(chd_path)
+                        except Exception:
+                            pass
 
             self.queue.put(("ROW_END", job_id))
             semaphore.release()
@@ -354,6 +426,29 @@ class CHDConverterApp:
 
         for t in threads:
             t.join()
+
+        # PHASE 2: Sequential Verification Phase
+        if successful_conversions:
+            self._log("\n--- Starting Sequential Verification Phase ---")
+            for src_file, chd_path, base_name in successful_conversions:
+                if os.path.exists(chd_path):
+                    orig_bytes = self._get_input_total_size(src_file)
+                    chd_bytes = os.path.getsize(chd_path)
+
+                    if orig_bytes > 0 and chd_bytes > 0:
+                        ratio = (chd_bytes / orig_bytes) * 100
+                        saved = orig_bytes - chd_bytes
+                        self._log(
+                            f"[VERIFYING] {base_name}.chd\n"
+                            f"  └─ Ratio {ratio:.1f}% | Saved {format_size(saved)}"
+                        )
+
+                    v_cmd = ["chdman", "verify", "-i", chd_path]
+                    v_res = subprocess.run(v_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    if v_res.returncode == 0 and "raw sha1" in v_res.stdout.lower():
+                        self._log(f"  └─ Integrity Check: PASSED ✓")
+                    else:
+                        self._log(f"  └─ Integrity Check: FAILED ✗")
 
         self.queue.put(("FINISHED", None))
 
