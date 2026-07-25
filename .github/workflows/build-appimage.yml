@@ -1,4 +1,4 @@
-name: Build AppImage
+name: Build Suite AppImage
 
 on:
   push:
@@ -31,5 +31,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CHD_Converter-x86_64.AppImage
+          name: CHD_Processing_Suite-x86_64.AppImage
           path: '*.AppImage'
