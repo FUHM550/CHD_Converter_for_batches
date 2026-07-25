@@ -35,7 +35,7 @@ AppDir:
 
   files:
     include:
-      - chd_converter_app.py
+      - chd_gui_advanced.py
 
   runtime:
     env:
