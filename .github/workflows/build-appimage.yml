@@ -18,7 +18,9 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev wget
+          sudo apt-get install -y 
+	  python3 -m pip install --upgrade pip
+	  python3 -m pip install --upgrade appimage-builder
           
           # Download continuous appimagetool release
           wget "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
