@@ -3,9 +3,50 @@
 *.mpeg
 *.7zip
 *.7z
+*.AppImage
+
 
 .build_venv
 .build
 .AppDir
 .dist
 .venv
+
+build/
+dist/
+AppDir/
+build_env/
+*.spec
+*.AppImage
+__pycache__/
+
+
+# Byte-compiled / Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller & Build artifacts
+build/
+dist/
+AppDir/
+*.spec
+
+# Virtual Environments
+.venv/
+venv/
+build_env/
+
+# Binary tools & generated AppImages
+*.AppImage
+*.7z
+*.zip
+*.tar.gz
+
+# ROMs & Disc Images
+*.iso
+*.chd
+*.cue
+*.bin
+*.gdi
+*.ccd
