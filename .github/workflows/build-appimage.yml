@@ -1,0 +1,35 @@
+name: Build AppImage
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev
+          wget https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
+          pip3 install appimage-builder
+
+      - name: Build AppImage
+        run: |
+          appimage-builder --recipe AppImageBuilder.yml
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHD_Converter-x86_64.AppImage
+          path: '*.AppImage'
