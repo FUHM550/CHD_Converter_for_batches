@@ -20,12 +20,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-pip python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev wget
           
-          # Download appimagetool from the reliable continuous release link
+          # Download continuous appimagetool release
           wget "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
           sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
           
           pip3 install appimage-builder
+
+      - name: Make launcher executable
+        run: chmod +x entrypoint.sh
 
       - name: Build AppImage
         run: |

@@ -1,14 +1,4 @@
 version: 1
-script:
-  - cat <<EOF > chd_suite_launcher.sh
-#!/bin/sh
-HERE="\$(dirname "\$(readlink -f "\$0")")"
-export PATH="\$HERE/usr/bin:\$PATH"
-export PYTHONHOME="\$HERE/usr"
-export PYTHONPATH="\$HERE/usr/lib/python3/dist-packages:\$PYTHONPATH"
-exec "\$HERE/usr/bin/python3" "\$HERE/usr/src/main_launcher.py" "\$@"
-EOF
-  - chmod +x chd_suite_launcher.sh
 
 AppDir:
   path: ./AppDir
@@ -17,7 +7,7 @@ AppDir:
     name: CHD Processing Suite
     icon: utilities-terminal
     version: 1.0.0
-    exec: chd_suite_launcher.sh
+    exec: entrypoint.sh
     exec_args: "$@"
 
   apt:
@@ -36,6 +26,7 @@ AppDir:
 
   files:
     include:
+      - entrypoint.sh
       - main_launcher.py
       - chd_gui_advanced.py
       - chd_gui.py
