@@ -135,7 +135,7 @@ class CHDConverterApp:
             font=("sans-serif", 9, "italic")
         ).pack(side="left", padx=10)
 
-        # Row B: Timer & CPU Monitor (Placed DIRECTLY under Parallel Jobs)
+        # Row B: Timer & CPU Monitor
         frame_stats_row = ttk.Frame(frame_sys)
         frame_stats_row.pack(fill="x", anchor="w", pady=5)
 
@@ -156,7 +156,7 @@ class CHDConverterApp:
 
         self.lbl_status_summary = ttk.Label(
             frame_status_info,
-            text="Jobs Done: 0 / 0 | Last Completed: None",
+            text="Jobs Done: 0 / 0 | Current Stage: Idle",
             font=("sans-serif", 10, "bold")
         )
         self.lbl_status_summary.pack(side="left")
@@ -390,7 +390,7 @@ class CHDConverterApp:
         self.start_time = time.time()
 
         self.global_progress["value"] = 0
-        self.lbl_status_summary.config(text=f"Jobs Done: 0 / {len(self.files_to_process)} | Last Completed: None")
+        self.lbl_status_summary.config(text=f"Jobs Done: 0 / {len(self.files_to_process)} | Current Stage: Converting...")
         self._log(f"\n--- Starting Batch Conversion ({max_workers} parallel job(s)) ---")
 
         threading.Thread(
@@ -421,16 +421,18 @@ class CHDConverterApp:
     def _run_batch(self, files, custom_out_dir, max_workers):
         semaphore = threading.Semaphore(max_workers)
         threads = []
-        completed_count = 0
         total_files = len(files)
-        count_lock = threading.Lock()
+
+        # Track completed units (Each file = 100 units: 80 for conversion, 20 for verification)
+        completed_units = 0
+        units_lock = threading.Lock()
 
         successful_conversions = []
         successful_lock = threading.Lock()
 
-        # PHASE 1: Pure Conversion Phase
+        # PHASE 1: Pure Conversion Phase (0% -> 80% per file)
         def worker(job_id, file_path):
-            nonlocal completed_count
+            nonlocal completed_units
             filename = os.path.basename(file_path)
             base_name, ext = os.path.splitext(filename)
 
@@ -443,6 +445,8 @@ class CHDConverterApp:
                 self._log(f"[SKIP] CHD already exists: {base_name}.chd")
                 with successful_lock:
                     successful_conversions.append((file_path, chd_path, base_name))
+                with units_lock:
+                    completed_units += 80
             else:
                 self._log(f"[START] Converting: {filename}")
 
@@ -468,6 +472,8 @@ class CHDConverterApp:
                     self._log(f"[CONVERTED] Finished: {base_name}.chd")
                     with successful_lock:
                         successful_conversions.append((file_path, chd_path, base_name))
+                    with units_lock:
+                        completed_units += 80
                 else:
                     self._log(f"[ERROR] Conversion failed for: {filename}")
                     if error_lines:
@@ -477,13 +483,16 @@ class CHDConverterApp:
                             os.remove(chd_path)
                         except Exception:
                             pass
+                    # If conversion failed, count the file as fully processed to avoid stuck progress
+                    with units_lock:
+                        completed_units += 100
 
             self.queue.put(("ROW_END", job_id))
             semaphore.release()
 
-            with count_lock:
-                completed_count += 1
-                self.queue.put(("STATUS_UPDATE", (completed_count, total_files, filename)))
+            # Push incremental progress update to UI
+            with units_lock:
+                self.queue.put(("PROGRESS_UPDATE", (completed_units, total_files * 100, f"Converted {filename}")))
 
         for idx, file_path in enumerate(files, start=1):
             semaphore.acquire()
@@ -494,7 +503,7 @@ class CHDConverterApp:
         for t in threads:
             t.join()
 
-        # PHASE 2: Sequential Verification Phase
+        # PHASE 2: Sequential Verification Phase (80% -> 100% per file)
         if successful_conversions:
             self._log("\n--- Starting Sequential Verification Phase ---")
             for src_file, chd_path, base_name in successful_conversions:
@@ -516,6 +525,11 @@ class CHDConverterApp:
                         self._log(f"  └─ Integrity Check: PASSED ✓")
                     else:
                         self._log(f"  └─ Integrity Check: FAILED ✗")
+
+                # Add the remaining 20 units for completing the verification step
+                with units_lock:
+                    completed_units += 20
+                    self.queue.put(("PROGRESS_UPDATE", (completed_units, total_files * 100, f"Verified {base_name}.chd")))
 
         self.queue.put(("FINISHED", None))
 
@@ -546,18 +560,21 @@ class CHDConverterApp:
                         self.active_rows[job_id].destroy()
                         del self.active_rows[job_id]
 
-                elif msg_type == "STATUS_UPDATE":
-                    done, total, last_file = payload
+                elif msg_type == "PROGRESS_UPDATE":
+                    curr_units, max_units, stage_info = payload
+                    pct = (curr_units / max_units) * 100 if max_units > 0 else 0
+                    self.global_progress["value"] = pct
+
+                    done_count = curr_units // 100
+                    total_count = max_units // 100
                     self.lbl_status_summary.config(
-                        text=f"Jobs Done: {done} / {total} | Last Completed: {last_file}"
+                        text=f"Jobs Done: {done_count} / {total_count} | Stage: {stage_info}"
                     )
-                    if total > 0:
-                        pct_complete = (done / total) * 100
-                        self.global_progress["value"] = pct_complete
 
                 elif msg_type == "FINISHED":
                     self.btn_start.config(state="normal")
                     self.is_running = False
+                    self.global_progress["value"] = 100
                     self._log("\n--- Batch Conversion Complete! ---")
 
                     if self.var_enable_sound.get():
