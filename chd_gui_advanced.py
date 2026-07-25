@@ -51,12 +51,15 @@ class ActiveJobRow:
         self.lbl_pct.config(text=f"{int(percent)}%")
 
     def destroy(self):
-        self.frame.destroy()
+        try:
+            self.frame.destroy()
+        except Exception:
+            pass
 
 class CHDConverterApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Advanced CHD Batch Converter")
+        self.root.title("Advanced CHD Batch Converter (Sequential I/O Safe)")
         self.root.geometry("780x750")
         self.root.minsize(700, 600)
 
@@ -110,11 +113,17 @@ class CHDConverterApp:
 
         ttk.Label(frame_sys, text="Parallel Jobs:").pack(side="left", padx=5)
         cpu_count = os.cpu_count() or 4
-        default_workers = min(2, max(1, cpu_count // 2))
 
+        # STRICT DEFAULT TO 1: Eliminates disk I/O contention and RAM OOM crashes
         self.spin_threads = ttk.Spinbox(frame_sys, from_=1, to=cpu_count, width=5)
-        self.spin_threads.set(default_workers)
+        self.spin_threads.set(1)
         self.spin_threads.pack(side="left", padx=5)
+
+        ttk.Label(
+            frame_sys,
+            text="Recommended: 1 (Prevents Disk I/O bottlenecks & RAM spikes)",
+            font=("sans-serif", 9, "italic")
+        ).pack(side="left", padx=10)
 
         self.lbl_timer = ttk.Label(frame_sys, text="Elapsed: 00:00:00")
         self.lbl_timer.pack(side="right", padx=15)
@@ -133,7 +142,6 @@ class CHDConverterApp:
         )
         self.lbl_status_summary.pack(side="left")
 
-        # Start Button
         self.btn_start = ttk.Button(frame_batch_status, text="Start Batch Conversion", command=self._start_conversion)
         self.btn_start.pack(side="right", padx=5)
 
@@ -154,7 +162,7 @@ class CHDConverterApp:
 
     def _select_files(self):
         files = []
-        # Attempt system file dialogs (KDE kdialog or GNOME zenity)
+        # Attempt native system file managers (KDE kdialog or GNOME zenity)
         if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
@@ -177,6 +185,7 @@ class CHDConverterApp:
             except Exception:
                 pass
 
+        # Fallback to standard Tkinter dialog
         if not files:
             files = filedialog.askopenfilenames(
                 title="Select Disc Images",
@@ -316,14 +325,14 @@ class CHDConverterApp:
         try:
             max_workers = int(self.spin_threads.get())
         except ValueError:
-            max_workers = 2
+            max_workers = 1
 
         self.btn_start.config(state="disabled")
         self.is_running = True
         self.start_time = time.time()
 
         self.lbl_status_summary.config(text=f"Jobs Done: 0 / {len(self.files_to_process)} | Last Completed: None")
-        self._log(f"\n--- Starting Batch Conversion ({max_workers} max threads) ---")
+        self._log(f"\n--- Starting Batch Conversion ({max_workers} parallel job(s)) ---")
 
         threading.Thread(
             target=self._run_batch,
@@ -360,7 +369,7 @@ class CHDConverterApp:
         successful_conversions = []
         successful_lock = threading.Lock()
 
-        # PHASE 1: Parallel Conversions ONLY
+        # PHASE 1: Parallel/Sequential Conversions ONLY (No numprocessors flags)
         def worker(job_id, file_path):
             nonlocal completed_count
             filename = os.path.basename(file_path)
@@ -379,8 +388,8 @@ class CHDConverterApp:
                 self._log(f"[START] Converting: {filename}")
                 cmd_type = "createdvd" if ext.lower() == ".iso" else "createcd"
 
-                # Cap chdman's internal thread footprint (-numprocessors 2) to control RAM usage
-                cmd = ["chdman", cmd_type, "-i", file_path, "-o", chd_path, "--force", "-numprocessors", "2"]
+                # Standard native chdman command without unsupported -numprocessors flags
+                cmd = ["chdman", cmd_type, "-i", file_path, "-o", chd_path, "--force"]
 
                 process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
