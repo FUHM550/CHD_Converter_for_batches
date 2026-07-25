@@ -4,15 +4,16 @@ import sys
 import re
 import shutil
 import subprocess
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 class ApeToFlacApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("APE to FLAC Preprocessor")
+        self.root.title("APE to FLAC Preprocessor (Native File Manager)")
         self.root.geometry("680x450")
-        
+
         self.selected_folder = ""
         self._build_ui()
 
@@ -49,7 +50,36 @@ class ApeToFlacApp:
         self.txt_log.config(state="disabled")
 
     def _select_folder(self):
-        folder = filedialog.askdirectory(title="Select Folder Containing .cue / .ape Files")
+        folder = ""
+
+        # Try KDE Plasma native dialog
+        if shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getexistingdirectory", "."],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        # Try GNOME native dialog
+        if not folder and shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    ["zenity", "--file-selection", "--directory"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                )
+                if res.returncode == 0:
+                    folder = res.stdout.strip()
+            except Exception:
+                pass
+
+        # Fallback to Tkinter dialog
+        if not folder:
+            folder = filedialog.askdirectory(title="Select Folder Containing .cue / .ape Files")
+
         if folder:
             self.selected_folder = folder
             self.lbl_folder.config(text=folder)
@@ -61,14 +91,12 @@ class ApeToFlacApp:
             return
 
         if not shutil.which("ffmpeg"):
-            messagebox.showerror("Error", "ffmpeg was not found on your system.\nPlease install ffmpeg (e.g. sudo apt install ffmpeg).")
+            messagebox.showerror("Error", "ffmpeg was not found on your system.\nPlease install ffmpeg (e.g., sudo apt install ffmpeg).")
             return
 
         self.btn_start.config(state="disabled")
         self._log("\n--- Starting APE -> FLAC Conversion ---")
 
-        # Process in thread
-        import threading
         threading.Thread(target=self._process_folder, daemon=True).start()
 
     def _process_folder(self):
@@ -83,7 +111,7 @@ class ApeToFlacApp:
                     if ".ape" in content.lower():
                         self._log(f"Found APE references in CUE: {file}")
                         ape_matches = re.findall(r'FILE\s+"([^"]+\.ape)"', content, re.IGNORECASE)
-                        
+
                         new_content = content
                         for ape_file in ape_matches:
                             src_ape = os.path.join(root_dir, ape_file)
@@ -93,12 +121,13 @@ class ApeToFlacApp:
 
                             if os.path.exists(src_ape):
                                 self._log(f"  └─ Transcoding: {ape_file} -> {flac_file}")
+                                # -threads 1 prevents CPU/RAM saturation during transcoding
                                 cmd = ["ffmpeg", "-threads", "1", "-i", src_ape, "-c:a", "flac", dst_flac, "-y"]
                                 res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                                
+
                                 if res.returncode == 0:
                                     new_content = re.sub(re.escape(ape_file), flac_file, new_content, flags=re.IGNORECASE)
-                                    os.remove(src_ape) # Remove original APE to clean up
+                                    os.remove(src_ape)  # Clean up original APE
                                     converted_count += 1
                                 else:
                                     self._log(f"  └─ [ERROR] Failed to convert: {ape_file}")
