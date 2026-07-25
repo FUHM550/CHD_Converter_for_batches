@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=CHD Batch Converter
+Exec=chd_converter
+Icon=chd_converter
+Type=Application
+Categories=Utility;
