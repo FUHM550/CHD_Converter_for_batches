@@ -1,23 +1,23 @@
 version: 1
 script:
-  - cat <<EOF > chd_converter_launcher.sh
+  - cat <<EOF > chd_suite_launcher.sh
 #!/bin/sh
 HERE="\$(dirname "\$(readlink -f "\$0")")"
 export PATH="\$HERE/usr/bin:\$PATH"
 export PYTHONHOME="\$HERE/usr"
 export PYTHONPATH="\$HERE/usr/lib/python3/dist-packages:\$PYTHONPATH"
-exec "\$HERE/usr/bin/python3" "\$HERE/usr/src/chd_converter_app.py" "\$@"
+exec "\$HERE/usr/bin/python3" "\$HERE/usr/src/main_launcher.py" "\$@"
 EOF
-  - chmod +x chd_converter_launcher.sh
+  - chmod +x chd_suite_launcher.sh
 
 AppDir:
   path: ./AppDir
   app_info:
-    id: com.user.chdconverter
-    name: CHD Converter
+    id: com.user.chdsuite
+    name: CHD Processing Suite
     icon: utilities-terminal
     version: 1.0.0
-    exec: chd_converter_launcher.sh
+    exec: chd_suite_launcher.sh
     exec_args: "$@"
 
   apt:
@@ -29,13 +29,18 @@ AppDir:
       - python3
       - python3-tk
       - chdman
+      - ffmpeg
       - kdialog
       - zenity
     exclude: []
 
   files:
     include:
+      - main_launcher.py
       - chd_gui_advanced.py
+      - chd_gui.py
+      - ape_to_flac_preprocessor.py
+      - chd_extractor_core.py
 
   runtime:
     env:
