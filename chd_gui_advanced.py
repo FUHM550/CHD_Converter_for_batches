@@ -59,9 +59,9 @@ class ActiveJobRow:
 class CHDConverterApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Advanced CHD Batch Converter (Sequential I/O Safe)")
-        self.root.geometry("780x750")
-        self.root.minsize(700, 600)
+        self.root.title("Advanced CHD Batch Converter")
+        self.root.geometry("820x780")
+        self.root.minsize(740, 640)
 
         self.files_to_process = []
         self.is_running = False
@@ -71,16 +71,31 @@ class CHDConverterApp:
         self.start_time = 0
         self.prev_cpu_total = 0
         self.prev_cpu_idle = 0
+
+        # Options State
         self.sound_alarm_path = ""
+        self.var_enable_sound = tk.BooleanVar(value=True)
+        self.var_enable_popup = tk.BooleanVar(value=True)
 
         self._build_ui()
         self.root.after(100, self._process_queue)
         self.root.after(1000, self._update_system_stats)
 
     def _build_ui(self):
+        # Create Tabbed Layout
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.tab_main = ttk.Frame(self.notebook, padding=5)
+        self.tab_options = ttk.Frame(self.notebook, padding=10)
+
+        self.notebook.add(self.tab_main, text=" Conversion Manager ")
+        self.notebook.add(self.tab_options, text=" Options & Notifications ")
+
+        # ================= TAB 1: MAIN CONVERSION MANAGER =================
         # 1. Inputs & Outputs
-        frame_top = ttk.LabelFrame(self.root, text=" Paths & Options ", padding=10)
-        frame_top.pack(fill="x", padx=10, pady=5)
+        frame_top = ttk.LabelFrame(self.tab_main, text=" Paths & Options ", padding=10)
+        frame_top.pack(fill="x", padx=5, pady=5)
 
         btn_files = ttk.Button(frame_top, text="Select Files...", command=self._select_files)
         btn_files.grid(row=0, column=0, padx=5, pady=2, sticky="w")
@@ -98,71 +113,115 @@ class CHDConverterApp:
         btn_out_dir = ttk.Button(frame_top, text="Browse...", command=self._select_out_dir)
         btn_out_dir.grid(row=1, column=3, padx=5, pady=5)
 
-        ttk.Label(frame_top, text="Completion Sound:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
-        self.lbl_alarm = ttk.Label(frame_top, text="System Default Bell", font=("sans-serif", 9, "italic"))
-        self.lbl_alarm.grid(row=2, column=1, columnspan=2, padx=5, pady=2, sticky="w")
-
-        btn_alarm = ttk.Button(frame_top, text="Pick Sound...", command=self._select_alarm)
-        btn_alarm.grid(row=2, column=3, padx=5, pady=2)
-
         frame_top.columnconfigure(2, weight=1)
 
         # 2. Performance & System Status
-        frame_sys = ttk.LabelFrame(self.root, text=" Threads & Performance ", padding=10)
-        frame_sys.pack(fill="x", padx=10, pady=5)
+        frame_sys = ttk.LabelFrame(self.tab_main, text=" Threads & Performance ", padding=10)
+        frame_sys.pack(fill="x", padx=5, pady=5)
 
-        ttk.Label(frame_sys, text="Parallel Jobs:").pack(side="left", padx=5)
+        # Row A: Parallel Jobs
+        frame_jobs_row = ttk.Frame(frame_sys)
+        frame_jobs_row.pack(fill="x", anchor="w", pady=2)
+
+        ttk.Label(frame_jobs_row, text="Parallel Jobs:").pack(side="left", padx=5)
         cpu_count = os.cpu_count() or 4
-
-        # STRICT DEFAULT TO 1: Eliminates disk I/O contention and RAM OOM crashes
-        self.spin_threads = ttk.Spinbox(frame_sys, from_=1, to=cpu_count, width=5)
+        self.spin_threads = ttk.Spinbox(frame_jobs_row, from_=1, to=cpu_count, width=5)
         self.spin_threads.set(1)
         self.spin_threads.pack(side="left", padx=5)
 
         ttk.Label(
-            frame_sys,
-            text="Recommended: 1 (Prevents Disk I/O bottlenecks & RAM spikes)",
+            frame_jobs_row,
+            text="(Recommended: 1 for maximum ISO stability)",
             font=("sans-serif", 9, "italic")
         ).pack(side="left", padx=10)
 
-        self.lbl_timer = ttk.Label(frame_sys, text="Elapsed: 00:00:00")
-        self.lbl_timer.pack(side="right", padx=15)
+        # Row B: Timer & CPU Monitor (Placed DIRECTLY under Parallel Jobs)
+        frame_stats_row = ttk.Frame(frame_sys)
+        frame_stats_row.pack(fill="x", anchor="w", pady=5)
 
-        self.lbl_cpu = ttk.Label(frame_sys, text="CPU: 0.0%")
-        self.lbl_cpu.pack(side="right", padx=15)
+        self.lbl_timer = ttk.Label(frame_stats_row, text="Elapsed: 00:00:00", font=("sans-serif", 9, "bold"))
+        self.lbl_timer.pack(side="left", padx=5)
 
-        # 3. Overall Batch Status Line
-        frame_batch_status = ttk.Frame(self.root, padding=5)
-        frame_batch_status.pack(fill="x", padx=10)
+        ttk.Label(frame_stats_row, text="|").pack(side="left", padx=10)
+
+        self.lbl_cpu = ttk.Label(frame_stats_row, text="CPU: 0.0%", font=("sans-serif", 9, "bold"))
+        self.lbl_cpu.pack(side="left", padx=5)
+
+        # 3. Overall Batch Status Line & Global Progress Bar
+        frame_batch_status = ttk.LabelFrame(self.tab_main, text=" Overall Batch Progress ", padding=10)
+        frame_batch_status.pack(fill="x", padx=5, pady=5)
+
+        frame_status_info = ttk.Frame(frame_batch_status)
+        frame_status_info.pack(fill="x", pady=2)
 
         self.lbl_status_summary = ttk.Label(
-            frame_batch_status,
+            frame_status_info,
             text="Jobs Done: 0 / 0 | Last Completed: None",
             font=("sans-serif", 10, "bold")
         )
         self.lbl_status_summary.pack(side="left")
 
-        self.btn_start = ttk.Button(frame_batch_status, text="Start Batch Conversion", command=self._start_conversion)
+        self.btn_start = ttk.Button(frame_status_info, text="Start Batch Conversion", command=self._start_conversion)
         self.btn_start.pack(side="right", padx=5)
 
+        self.global_progress = ttk.Progressbar(frame_batch_status, orient="horizontal", mode="determinate")
+        self.global_progress.pack(fill="x", expand=True, pady=5)
+
         # 4. Active Parallel Progress Rows Frame
-        self.frame_active = ttk.LabelFrame(self.root, text=" Active Conversions ", padding=5)
-        self.frame_active.pack(fill="x", padx=10, pady=5)
+        self.frame_active = ttk.LabelFrame(self.tab_main, text=" Active Conversions ", padding=5)
+        self.frame_active.pack(fill="x", padx=5, pady=5)
 
         # 5. Console Log Window
-        frame_log = ttk.LabelFrame(self.root, text=" Conversion History Log ", padding=10)
-        frame_log.pack(fill="both", expand=True, padx=10, pady=5)
+        frame_log = ttk.LabelFrame(self.tab_main, text=" Conversion History Log ", padding=10)
+        frame_log.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.txt_log = tk.Text(frame_log, wrap="word", height=10, state="disabled")
+        self.txt_log = tk.Text(frame_log, wrap="word", height=8, state="disabled")
         self.txt_log.pack(fill="both", expand=True, side="left")
 
         scrollbar = ttk.Scrollbar(frame_log, command=self.txt_log.yview)
         scrollbar.pack(side="right", fill="y")
         self.txt_log['yscrollcommand'] = scrollbar.set
 
+        # ================= TAB 2: OPTIONS & NOTIFICATIONS =================
+        frame_opts = ttk.LabelFrame(self.tab_options, text=" Completion Behavior ", padding=15)
+        frame_opts.pack(fill="x", padx=10, pady=10)
+
+        chk_popup = ttk.Checkbutton(
+            frame_opts,
+            text="Show pop-up notification box when batch completes",
+            variable=self.var_enable_popup
+        )
+        chk_popup.pack(anchor="w", pady=5)
+
+        chk_sound = ttk.Checkbutton(
+            frame_opts,
+            text="Play audio sound alarm when batch completes",
+            variable=self.var_enable_sound
+        )
+        chk_sound.pack(anchor="w", pady=5)
+
+        frame_alarm_pick = ttk.LabelFrame(self.tab_options, text=" Custom Alarm Sound ", padding=15)
+        frame_alarm_pick.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(frame_alarm_pick, text="Current Audio File:").pack(anchor="w")
+        self.lbl_alarm_path = ttk.Label(
+            frame_alarm_pick,
+            text="System Default Bell",
+            font=("sans-serif", 9, "italic")
+        )
+        self.lbl_alarm_path.pack(anchor="w", pady=2)
+
+        frame_alarm_btns = ttk.Frame(frame_alarm_pick)
+        frame_alarm_btns.pack(fill="x", pady=5)
+
+        btn_alarm_select = ttk.Button(frame_alarm_btns, text="Pick Sound File...", command=self._select_alarm)
+        btn_alarm_select.pack(side="left", padx=5)
+
+        btn_alarm_test = ttk.Button(frame_alarm_btns, text="Test Alarm", command=self._play_alarm)
+        btn_alarm_test.pack(side="left", padx=5)
+
     def _select_files(self):
         files = []
-        # Attempt native system file managers (KDE kdialog or GNOME zenity)
         if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
@@ -185,7 +244,6 @@ class CHDConverterApp:
             except Exception:
                 pass
 
-        # Fallback to standard Tkinter dialog
         if not files:
             files = filedialog.askopenfilenames(
                 title="Select Disc Images",
@@ -274,7 +332,7 @@ class CHDConverterApp:
         )
         if sound:
             self.sound_alarm_path = sound
-            self.lbl_alarm.config(text=os.path.basename(sound))
+            self.lbl_alarm_path.config(text=sound)
 
     def _log(self, text):
         self.queue.put(("LOG", text))
@@ -331,6 +389,7 @@ class CHDConverterApp:
         self.is_running = True
         self.start_time = time.time()
 
+        self.global_progress["value"] = 0
         self.lbl_status_summary.config(text=f"Jobs Done: 0 / {len(self.files_to_process)} | Last Completed: None")
         self._log(f"\n--- Starting Batch Conversion ({max_workers} parallel job(s)) ---")
 
@@ -369,7 +428,7 @@ class CHDConverterApp:
         successful_conversions = []
         successful_lock = threading.Lock()
 
-        # PHASE 1: Parallel/Sequential Conversions ONLY (No numprocessors flags)
+        # PHASE 1: Pure Conversion Phase
         def worker(job_id, file_path):
             nonlocal completed_count
             filename = os.path.basename(file_path)
@@ -386,9 +445,8 @@ class CHDConverterApp:
                     successful_conversions.append((file_path, chd_path, base_name))
             else:
                 self._log(f"[START] Converting: {filename}")
-                cmd_type = "createdvd" if ext.lower() == ".iso" else "createcd"
 
-                # Standard native chdman command without unsupported -numprocessors flags
+                cmd_type = "createdvd" if ext.lower() == ".iso" else "createcd"
                 cmd = ["chdman", cmd_type, "-i", file_path, "-o", chd_path, "--force"]
 
                 process = subprocess.Popen(
@@ -493,13 +551,20 @@ class CHDConverterApp:
                     self.lbl_status_summary.config(
                         text=f"Jobs Done: {done} / {total} | Last Completed: {last_file}"
                     )
+                    if total > 0:
+                        pct_complete = (done / total) * 100
+                        self.global_progress["value"] = pct_complete
 
                 elif msg_type == "FINISHED":
                     self.btn_start.config(state="normal")
                     self.is_running = False
                     self._log("\n--- Batch Conversion Complete! ---")
-                    self._play_alarm()
-                    messagebox.showinfo("Done", "All conversions and integrity checks completed!")
+
+                    if self.var_enable_sound.get():
+                        self._play_alarm()
+
+                    if self.var_enable_popup.get():
+                        messagebox.showinfo("Done", "All conversions and integrity checks completed!")
 
         except queue.Empty:
             pass
