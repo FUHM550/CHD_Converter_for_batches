@@ -54,6 +54,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Download built AppImage
         uses: actions/download-artifact@v4
         with:
@@ -62,5 +65,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: '*.AppImage'
+          files: |
+            *.AppImage
+            install.sh
           generate_release_notes: true
