@@ -19,8 +19,6 @@ dist/
 
 # Binary tools & generated AppImages
 *.AppImage
-*.7z
-*.zip
 *.tar.gz
 
 #Media images
@@ -33,6 +31,6 @@ dist/
 *.mpeg
 *.7zip
 *.7z
-
+*.rar
 
 

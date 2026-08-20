@@ -5,7 +5,7 @@ AppDir:
   app_info:
     id: com.user.chdsuite
     name: CHD Processing Suite
-    icon: utilities-terminal
+    icon: chdsuite
     version: 1.0.0
     exec: usr/bin/python3
     exec_args: "${APPDIR}/usr/src/main_launcher.py $@"
@@ -32,3 +32,4 @@ AppDir:
 
 AppImage:
   arch: x86_64
+  file_name: CHD_Processing_Suite-1.0.0-x86_64.AppImage

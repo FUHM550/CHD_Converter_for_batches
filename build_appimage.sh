@@ -21,6 +21,10 @@ cp "$ROOT/main_launcher.py" "$ROOT/chd_gui_advanced.py" "$ROOT/chd_gui.py" \
    "$ROOT/ape_to_flac_preprocessor.py" "$ROOT/chd_extractor_core.py" \
    "$BUILD_ROOT/AppDir/usr/src/"
 
+echo "==> Staging app icon"
+mkdir -p "$BUILD_ROOT/AppDir/usr/share/icons/hicolor/scalable/apps"
+cp "$ROOT/icon.svg" "$BUILD_ROOT/AppDir/usr/share/icons/hicolor/scalable/apps/chdsuite.svg"
+
 echo "==> Running appimage-builder in $BUILD_ROOT"
 cd "$BUILD_ROOT"
 appimage-builder --recipe AppImageBuilder.yml
