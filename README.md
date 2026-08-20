@@ -2,6 +2,7 @@
 This is a tool to simplify the task of converting files intended for some retro activities in linux distributions
 
 there are a couple of parts to this program:
+
 section 1: 
   CHD Batch converter
     This is the main tool, it does conversion from iso into chd, and can do a set list of files in sub session, in an orderly manner to avoid crashing your systems. still caution is recommended as it will crash your system if not enough ram is provided, as well as it will put your CPU to the limit at least as far as the test system 
