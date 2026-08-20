@@ -18,23 +18,26 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y 
-	  python3 -m pip install --upgrade pip
-	  python3 -m pip install --upgrade appimage-builder
-          
+          sudo apt-get install -y \
+            binutils coreutils desktop-file-utils fakeroot \
+            libgdk-pixbuf2.0-dev patchelf squashfs-tools strace \
+            util-linux zsync python3-pip python3-setuptools
+
+          python3 -m pip install --upgrade pip
+          pip3 install appimage-builder
+          # appimage-builder's Debian-version parsing breaks on newer
+          # `packaging` releases (they dropped LegacyVersion support).
+          pip3 install "packaging<22"
+
           # Download continuous appimagetool release
           wget "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
           sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
-          
-          pip3 install appimage-builder
-
-      - name: Make launcher executable
-        run: chmod +x entrypoint.sh
 
       - name: Build AppImage
         run: |
-          appimage-builder --recipe AppImageBuilder.yml
+          chmod +x build_appimage.sh
+          ./build_appimage.sh
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

@@ -7,37 +7,28 @@ AppDir:
     name: CHD Processing Suite
     icon: utilities-terminal
     version: 1.0.0
-    exec: entrypoint.sh
-    exec_args: "$@"
+    exec: usr/bin/python3
+    exec_args: "${APPDIR}/usr/src/main_launcher.py $@"
 
   apt:
     arch: amd64
     sources:
-      - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ jammy main universe'
-      - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ jammy-updates main universe'
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main universe'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main universe'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
     include:
       - python3
       - python3-tk
-      - chdman
+      - mame-tools
       - ffmpeg
-      - kdialog
-      - zenity
     exclude: []
-
-  files:
-    include:
-      - entrypoint.sh
-      - main_launcher.py
-      - chd_gui_advanced.py
-      - chd_gui.py
-      - ape_to_flac_preprocessor.py
-      - chd_extractor_core.py
 
   runtime:
     env:
       PATH: '${APPDIR}/usr/bin:${PATH}'
+      TCL_LIBRARY: '${APPDIR}/usr/share/tcltk/tcl8.6'
+      TK_LIBRARY: '${APPDIR}/usr/share/tcltk/tk8.6'
 
 AppImage:
   arch: x86_64
-  update-information: None
-  sign-key: None
